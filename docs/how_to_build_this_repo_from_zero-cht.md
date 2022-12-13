@@ -1,28 +1,28 @@
 # 0、目錄
 
-- [0、目錄](#id-建立及使用TokenlonSDK-0、目錄)
-- [1、下載 tokenlon-contracts-lib-js 並執行測試](#id-建立及使用TokenlonSDK-1、下載tokenlon-contracts-lib-js並執行測試)
-  - [（1）複製及編譯專案](#id-建立及使用TokenlonSDK-（1）複製及編譯專案)
-  - [（2）複製及編譯環境變數（For Mainnet）](#id-建立及使用TokenlonSDK-（2）複製及編譯環境變數（ForMainnet）)
-  - [（3）執行 For Mainnet 測試案例與結果輸出](#id-建立及使用TokenlonSDK-（3）執行ForMainnet測試案例與結果輸出)
-  - [（4）複製及編譯環境變數（For Arbitrum）](#id-建立及使用TokenlonSDK-（4）複製及編譯環境變數（ForArbitrum）)
-  - [（5）執行 For Arbitrum 測試案例與結果輸出](#id-建立及使用TokenlonSDK-（5）執行ForArbitrum測試案例與結果輸出)
-- [2、建立空專案](#id-建立及使用TokenlonSDK-2、建立空專案)
-  - [（1）初始化專案](#id-建立及使用TokenlonSDK-（1）初始化專案)
-  - [（2）編輯 Prettier 風格檔](#id-建立及使用TokenlonSDK-（2）編輯Prettier風格檔)
-  - [（3）編輯 Hardhat Fork 網路設定檔](#id-建立及使用TokenlonSDK-（3）編輯HardhatFork網路設定檔)
-  - [（4）建立 Hardhat Fork 網路用作弊工具](#id-建立及使用TokenlonSDK-（4）建立HardhatFork網路用作弊工具)
-  - [（5）建立合約地址簿 addresses.ts](#id-建立及使用TokenlonSDK-（5）建立合約地址簿addresses.ts)
-  - [（6）下載、建立及編譯相關合約](#id-建立及使用TokenlonSDK-（6）下載、建立及編譯相關合約)
-- [3、建立使用 Tokenlon SDK 範例（For Mainnet）](#id-建立及使用TokenlonSDK-3、建立使用TokenlonSDK範例（ForMainnet）)
-  - [（1）調整專案參數以符合 Mainnet 網路](#id-建立及使用TokenlonSDK-（1）調整專案參數以符合Mainnet網路)
-  - [（2）AMMWrapper via Tokenlon SDK](#id-建立及使用TokenlonSDK-（2）AMMWrapperviaTokenlonSDK)
-  - [（3）AMMWrapperWithPath via Tokenlon SDK](#id-建立及使用TokenlonSDK-（3）AMMWrapperWithPathviaTokenlonSDK)
-  - [（4）RFQ via Tokenlon SDK](#id-建立及使用TokenlonSDK-（4）RFQviaTokenlonSDK)
-- [4、建立使用 Tokenlon SDK 範例（For Arbitrum）](#id-建立及使用TokenlonSDK-4、建立使用TokenlonSDK範例（ForArbitrum）)
-  - [（1）調整專案參數以符合 Arbitrum 網路](#id-建立及使用TokenlonSDK-（1）調整專案參數以符合Arbitrum網路)
-  - [（2）LimitOrder via Tokenlon SDK](#id-建立及使用TokenlonSDK-（2）LimitOrderviaTokenlonSDK)
-- [5、參考資料](#id-建立及使用TokenlonSDK-5、參考資料)
+- [0、目錄](#0目錄)
+- [1、下載 tokenlon-contracts-lib-js 並執行測試](#1下載-tokenlon-contracts-lib-js-並執行測試)
+  - [（1）複製及編譯專案](#1複製及編譯專案)
+  - [（2）複製及編譯環境變數（For Mainnet）](#2複製及編譯環境變數for-mainnet)
+  - [（3）執行 For Mainnet 測試案例與結果輸出](#3執行-for-mainnet-測試案例與結果輸出)
+  - [（4）複製及編譯環境變數（For Arbitrum）](#4複製及編譯環境變數for-arbitrum)
+  - [（5）執行 For Arbitrum 測試案例與結果輸出](#5執行-for-arbitrum-測試案例與結果輸出)
+- [2、建立空專案](#2建立空專案)
+  - [（1）初始化專案](#1初始化專案)
+  - [（2）編輯 Prettier 風格檔](#2編輯-prettier-風格檔)
+  - [（3）編輯 Hardhat Fork 網路設定檔](#3編輯-hardhat-fork-網路設定檔)
+  - [（4）建立 Hardhat Fork 網路用作弊工具](#4建立-hardhat-fork-網路用作弊工具)
+  - [（5）建立合約地址簿 addresses.ts](#5建立合約地址簿-addressests)
+  - [（6）下載、建立及編譯相關合約](#6下載建立及編譯相關合約)
+- [3、建立使用 Tokenlon SDK 範例（For Mainnet）](#3建立使用-tokenlon-sdk-範例for-mainnet)
+  - [（1）調整專案參數以符合 Mainnet 網路](#1調整專案參數以符合-mainnet-網路)
+  - [（2）AMMWrapper via Tokenlon SDK](#2ammwrapper-via-tokenlon-sdk)
+  - [（3）AMMWrapperWithPath via Tokenlon SDK](#3ammwrapperwithpath-via-tokenlon-sdk)
+  - [（4）RFQ via Tokenlon SDK](#4rfq-via-tokenlon-sdk)
+- [4、建立使用 Tokenlon SDK 範例（For Arbitrum）](#4建立使用-tokenlon-sdk-範例for-arbitrum)
+  - [（1）調整專案參數以符合 Arbitrum 網路](#1調整專案參數以符合-arbitrum-網路)
+  - [（2）LimitOrder via Tokenlon SDK](#2limitorder-via-tokenlon-sdk)
+- [5、參考資料](#5參考資料)
 
 # 1、下載 tokenlon-contracts-lib-js 並執行測試
 
@@ -563,7 +563,7 @@ FORK_BLOCK_NUMBER="14995000"
 % touch scripts/ammwrapper_eoa_via_sdk.ts && code scripts/ammwrapper_eoa_via_sdk.ts
 ```
 
-![](images/icons/grey_arrow_down.png)【請點此展開】AMMWrapper via Tokenlon SDK 程式碼範例
+![](images/icons/grey_arrow_down.png)AMMWrapper via Tokenlon SDK 程式碼範例
 
 ```java
 import { Wallet } from "ethers"
@@ -744,7 +744,7 @@ Balance after transaction:
 % touch scripts/ammwrapperwithpath_eoa_via_sdk.ts && code scripts/ammwrapperwithpath_eoa_via_sdk.ts
 ```
 
-![](images/icons/grey_arrow_down.png)【請點此展開】AMMWrapperWithPath via Tokenlon SDK 程式碼範例
+![](images/icons/grey_arrow_down.png)AMMWrapperWithPath via Tokenlon SDK 程式碼範例
 
 ```java
 import { Wallet } from "ethers"
@@ -931,7 +931,7 @@ Balance after transaction:
 % touch scripts/rfq_eoa_via_sdk.ts && code scripts/rfq_eoa_via_sdk.ts
 ```
 
-![](images/icons/grey_arrow_down.png)【請點此展開】RFQ via Tokenlon SDK 程式碼範例
+![](images/icons/grey_arrow_down.png)RFQ via Tokenlon SDK 程式碼範例
 
 ```java
 import { Wallet } from "ethers"
@@ -1117,7 +1117,7 @@ Balance after transaction:
 
 - 執行說明
 
-  - 透過 Tokenlon SDK 可快速地建立適用於 RFQ 合約的 order 結構，
+  - 透過 Tokenlon SDK 可快速地建立適用於 RFQ 合約的 order 結構
   - 使用 Tokenlon SDK 亦可簡易地讓 taker 及 maker 針對 order 結構進行簽章
   - 透過 Tokenlon SDK 可便利地取得針對 RFQ 合約的 fill() 函式執行的 payload
   - 確認建立的 payload 內容無誤後，可直接呼叫 UserProxy 合約的 toRFQ() 函式執行 fill() 交易
@@ -1147,7 +1147,7 @@ FORK_BLOCK_NUMBER="18000000"
 % touch scripts/limitorder_eoa_via_sdk.ts && code scripts/limitorder_eoa_via_sdk.ts
 ```
 
-![](images/icons/grey_arrow_down.png)【請點此展開】LimitOrder via Tokenlon SDK 程式碼範例
+![](images/icons/grey_arrow_down.png)LimitOrder via Tokenlon SDK 程式碼範例
 
 ```java
 import { Wallet } from "ethers"
@@ -1392,7 +1392,7 @@ Balance after transaction:
 
 - 執行說明
 
-  - 透過 Tokenlon SDK 可快速建立適用於 LimitOrder 合約的 order 結構，以及針對 order 結構進行簽章
+  - 透過 Tokenlon SDK 可快速建立適用於 LimitOrder 合約的 order 結構
   - 使用 Tokenlon SDK 亦可簡易地讓 taker 針對 order 結構進行簽章
   - 透過 Tokenlon SDK 可便利地取得 orderHash、allowFill，並讓 taker、coordinator 對其進行簽章
   - 使用 Tokenlon SDK 亦可輕鬆地取得針對 LimitOrder 合約的 fill() 函式執行的 payload
