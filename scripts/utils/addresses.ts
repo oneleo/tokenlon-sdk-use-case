@@ -5,6 +5,12 @@ export const mainnetAddr = {
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
 
+  // Token decimals
+  DAIDecimals: "18",
+  USDCDecimals: "6",
+  USDTDecimals: "6",
+  WETHDecimals: "18",
+
   // Tokenlon
   AllowanceTarget: "0x8A42d311D282Bfcaa5133b2DE0a8bCDBECea3073",
   AMMWrapper: "0x4a14347083B80E5216cA31350a2D21702aC3650d",
@@ -31,6 +37,12 @@ export const arbitrumAddr = {
   USDC: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
   USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
   WETH: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+
+  // Token decimals
+  DAIDecimals: "18",
+  USDCDecimals: "6",
+  USDTDecimals: "6",
+  WETHDecimals: "18",
 
   // Tokenlon
   AllowanceTarget: "0x413eCcE5d56204962090eEF1deaD4c0a247e289B",

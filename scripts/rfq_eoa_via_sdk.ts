@@ -1,7 +1,7 @@
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { mainnetAddr } from "./utils/addresses"
-import * as cheatcodes from "./utils/cheatcodes"
+import * as tokenUtils from "./utils/tokenUtils"
 import {
   RFQOrder,
   RFQFill,
@@ -11,6 +11,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", mainnetAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", mainnetAddr.DAIDecimals)
 
 async function main() {
   // Hardhat network information
@@ -38,11 +41,11 @@ async function main() {
   if (network.name === "hardhat") {
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Transfer 100 ETH to maker wallet
     const maker = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(maker, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(maker, ethUnit.mul(100))
 
     // Set default order
     const defaultOrder: RFQOrder = {
@@ -51,8 +54,8 @@ async function main() {
       makerAddr: maker.address,
       takerAssetAddr: mainnetAddr.WETH,
       makerAssetAddr: mainnetAddr.DAI,
-      takerAssetAmount: 1,
-      makerAssetAmount: 1000,
+      takerAssetAmount: wethUnit.mul(1),
+      makerAssetAmount: daiUnit.mul(1000),
       salt: signingHelper.generateRandomSalt(),
       deadline: EXPIRY,
       feeFactor: 0,
@@ -63,8 +66,19 @@ async function main() {
       ...defaultOrder,
     }
 
+    // Swap ETH to WETH via WETH contract
+    await tokenUtils.swapWeth(maker, mainnetAddr.WETH, wethUnit.mul(1))
+
+    // Swap 1 WETH to DAI via Uniswap contract
+    await tokenUtils.swapToken(
+      maker,
+      mainnetAddr.WETH,
+      mainnetAddr.DAI,
+      wethUnit.mul(1)
+    )
+
     // Approve transfer of makerAssetAddr permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    await tokenUtils.approveToken(
       maker,
       mainnetAddr.AllowanceTarget,
       order.makerAssetAddr,

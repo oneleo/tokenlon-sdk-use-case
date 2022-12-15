@@ -1,7 +1,7 @@
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { mainnetAddr } from "./utils/addresses"
-import * as cheatcodes from "./utils/cheatcodes"
+import * as tokenUtils from "./utils/tokenUtils"
 import {
   AMMOrder,
   SignatureType,
@@ -10,6 +10,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", mainnetAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", mainnetAddr.DAIDecimals)
 
 async function main() {
   // Print network information
@@ -41,7 +44,7 @@ async function main() {
   if (network.name === "hardhat") {
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Set default order
     const defaultOrder: AMMOrder = {
@@ -50,8 +53,8 @@ async function main() {
       // Could override following fields at need in each case
       takerAssetAddr: mainnetAddr.WETH,
       makerAssetAddr: mainnetAddr.DAI,
-      takerAssetAmount: 100,
-      makerAssetAmount: 100 * 1000,
+      takerAssetAmount: wethUnit.mul(1),
+      makerAssetAmount: daiUnit.mul(1000),
       userAddr: user.address,
       receiverAddr: user.address,
       salt: signingHelper.generateRandomSalt(),
@@ -77,8 +80,11 @@ async function main() {
       order.makerAssetAmount.toString()
     )
 
-    // Approve transfer of takerAssetAddr permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    // Swap 1 ETH to WETH via WETH contract
+    await tokenUtils.swapWeth(user, mainnetAddr.WETH, wethUnit.mul(1))
+
+    // Approve the transfer of takerAssetAddr permission to AllowanceTarget contract.
+    await tokenUtils.approveToken(
       user,
       mainnetAddr.AllowanceTarget,
       order.takerAssetAddr,
