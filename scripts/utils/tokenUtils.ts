@@ -83,10 +83,106 @@ export async function swapWeth(
   ).wait()
 }
 
+// Swap Tokens via Uniswap V3 contract
+// Reference from https://youtu.be/vXu5GeLP6A8
+// Add module before using: yarn add --dev @uniswap/v3-core @uniswap/v3-periphery
+export async function swapTokenV3(
+  user: ethers.Signer,
+  inputToken: string,
+  outputToken: string,
+  amount: ethers.BigNumberish
+) {
+  // Get user info from signer
+  const provider = user.provider ? user.provider : hardhat.ethers.provider
+  const userAddr = await user.getAddress()
+
+  // Only Mainnet or Arbitrum network can swap
+  await checkNetwork(provider)
+
+  // Max settlement time in seconds
+  const maxDelay = 60 * 2
+
+  // Format token addresses
+  const inputTokenAddr = ethers.utils.getAddress(inputToken)
+  const outputTokenAddr = ethers.utils.getAddress(outputToken)
+
+  // Create contract instances with user signature
+  const inputTokenContract = new hardhat.ethers.Contract(
+    inputTokenAddr,
+    IUniswapV3ERC20.abi,
+    user
+  )
+  const uniswapRouterAddr = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+  const uniswapRouterContract = new hardhat.ethers.Contract(
+    uniswapRouterAddr,
+    IUniswapV3Router.abi,
+    user
+  )
+
+  // Create contract instances with provider only
+  const uniswapFactoryAddr = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+  const factoryContract = new hardhat.ethers.Contract(
+    uniswapFactoryAddr,
+    IUniswapV3Factory.abi,
+    provider
+  )
+  const poolContract = new hardhat.ethers.Contract(
+    // Try to find low fee swap pool
+    await tryFindV3Pool(factoryContract, inputToken, outputToken),
+    IUniswapV3Pool.abi,
+    provider
+  )
+
+  // Get pool slot state
+  const poolFee = await poolContract.fee()
+
+  // Format token amount
+  const inputAmount = ethers.BigNumber.from(amount)
+
+  // Set swap deadline
+  const currentTimestamp = (await provider.getBlock("latest")).timestamp
+  const deadline = currentTimestamp + maxDelay
+
+  // Check sufficient balance
+  const balance = await inputTokenContract.balanceOf(userAddr)
+  if (balance.lt(inputAmount)) {
+    throw new Error("insufficient balance")
+  }
+
+  // Check sufficient allowance
+  const allowance = await inputTokenContract.allowance(
+    userAddr,
+    uniswapRouterContract.address
+  )
+  if (allowance.lt(inputAmount)) {
+    await (
+      await inputTokenContract.approve(
+        uniswapRouterContract.address,
+        inputAmount
+      )
+    ).wait()
+  }
+
+  // Swap tokens
+  const swapParams = {
+    tokenIn: inputTokenAddr,
+    tokenOut: outputTokenAddr,
+    fee: poolFee,
+    recipient: userAddr,
+    deadline: deadline,
+    amountIn: inputAmount,
+    amountOutMinimum: 0,
+    sqrtPriceLimitX96: 0,
+  }
+  const wsapTx = await uniswapRouterContract
+    .connect(user)
+    .exactInputSingle(swapParams)
+}
+
 // Swap Tokens via Uniswap V2 contract
 // Reference from https://github.com/thegostep/uniswap-v2-helper
 // Add module before using: yarn add --dev @uniswap/v2-core @uniswap/v2-periphery
-export async function swapToken(
+export async function swapTokenV2(
   user: ethers.Signer,
   inputToken: string,
   outputToken: string,
@@ -178,30 +274,6 @@ export async function swapToken(
   const amountIn = isSellOrder ? inputAmount : safetyAmount
   const amountOut = isSellOrder ? safetyAmount : outputAmount
 
-  // Get token order
-  const inputIs0 = (await pairContract.token0()) === inputTokenContract.address
-
-  // Get quotes
-  const { reserve0, reserve1 } = await pairContract.getReserves()
-
-  let reserve0Post
-  let reserve1Post
-  if (isSellOrder) {
-    reserve0Post = inputIs0
-      ? reserve0.add(inputAmount)
-      : reserve0.sub(expectedAmount)
-    reserve1Post = inputIs0
-      ? reserve1.sub(expectedAmount)
-      : reserve1.add(inputAmount)
-  } else {
-    reserve0Post = inputIs0
-      ? reserve0.add(inputAmount)
-      : reserve0.sub(expectedAmount)
-    reserve1Post = inputIs0
-      ? reserve1.sub(expectedAmount)
-      : reserve1.add(inputAmount)
-  }
-
   // Check sufficient balance
   const balance = await inputTokenContract.balanceOf(userAddr)
   if (balance.lt(amountIn)) {
@@ -252,7 +324,7 @@ async function checkNetwork(
   }
 }
 
-async function tryFindPool(
+async function tryFindV3Pool(
   factoryContract: ethers.ethers.Contract,
   token0: string,
   token1: string
@@ -269,7 +341,12 @@ async function tryFindPool(
       ethers.BigNumber.from(1000).mul(i) // Try to get 0.1% * i pool
     )
     if (poolAddress !== "0x0000000000000000000000000000000000000000") {
-      console.log("Find ", (i * 0.1).toFixed(1).toString(), "% pool")
+      console.log(
+        "Tips: Find",
+        (i * 0.1).toFixed(1).toString(),
+        "% fee pool:",
+        poolAddress
+      )
       return poolAddress
     }
   }

@@ -70,7 +70,7 @@ async function main() {
     await tokenUtils.swapWeth(maker, mainnetAddr.WETH, wethUnit.mul(1))
 
     // Swap 1 WETH to DAI via Uniswap contract
-    await tokenUtils.swapToken(
+    await tokenUtils.swapTokenV3(
       maker,
       mainnetAddr.WETH,
       mainnetAddr.DAI,

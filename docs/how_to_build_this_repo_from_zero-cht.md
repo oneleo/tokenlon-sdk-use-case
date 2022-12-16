@@ -151,7 +151,7 @@ $ hardhat test
 
 ## （2）編輯 Prettier 風格檔
 
-```java
+```bash
 % touch .prettierrc.json && code .prettierrc.json
 
 ### 編輯 .prettierrc.json
@@ -164,7 +164,7 @@ $ hardhat test
 
 ## （3）編輯 Hardhat Fork 網路設定檔
 
-```java
+```shell
 % touch hardhat.config.ts && code hardhat.config.ts
 
 ### Edit hardhat.config.ts
@@ -198,31 +198,20 @@ export default config
 ### --------------------------------------------------
 ```
 
-## （4）建立 Hardhat Fork 網路用作弊工具
+## （4）建立 Hardhat Fork 網路用工具
 
-```java
+```typescript
 % mkdir -p scripts/utils
 % touch scripts/utils/cheatcodes.ts && code scripts/utils/cheatcodes.ts
 ```
 
-![](images/icons/grey_arrow_down.png)建立 Hardhat Fork 網路用作弊工具範例
+![](images/icons/grey_arrow_down.png)建立 Hardhat Fork 網路用工具範例
 
-```java
-import { ethers } from "hardhat"
-import { setBalance } from "@nomicfoundation/hardhat-network-helpers"
+```typescript
 import {
   impersonateAccount,
   stopImpersonatingAccount,
 } from "@nomicfoundation/hardhat-network-helpers"
-import {
-  BaseContract,
-  BigNumber,
-  BigNumberish,
-  ContractTransaction,
-  Overrides,
-  Signer,
-  utils as ethersHelpers,
-} from "ethers"
 
 /*********************************
  *      External Functions       *
@@ -230,162 +219,395 @@ import {
 
 export const impersonate = impersonateAccount
 export const stopImpersonate = stopImpersonatingAccount
+```
 
-export async function dealETH(target: Addressable, amount: BigNumberish) {
-  await setBalance(await getAddress(target), BigNumber.from(amount))
-}
+## （5）建立 Swap tokens 工具
 
-export async function dealToken(
-  target: Addressable,
-  token: Addressable,
-  amount: BigNumberish
-) {
-  const slot = await probeBalanceStorageSlot(await getAddress(token))
-  const index = getStorageMapIndex(await getAddress(target), slot)
-  await setStorageAt(await getAddress(token), index, BigNumber.from(amount))
-}
+```typescript
+% touch scripts/utils/tokenUtils.ts && code scripts/utils/tokenUtils.ts
+```
 
-export interface WalletContract extends BaseContract {
-  connect(signer: Signer): this
-  approve(
-    spender: string,
-    tokenAddr: string,
-    amount: BigNumberish,
-    overrides?: Overrides & { from?: string }
-  ): Promise<ContractTransaction>
-}
+![](images/icons/grey_arrow_down.png)建立 Token swap 工具範例
 
-export async function dealTokenAndApprove(
-  target: Signer,
-  spender: Addressable,
-  token: Addressable,
-  amount: BigNumberish,
-  options: {
-    walletContract?: WalletContract
-  } = {}
-) {
-  const targetAddr = await getAddress(options.walletContract ?? target)
-  await dealToken(targetAddr, token, amount)
-  if (options.walletContract) {
-    await options.walletContract
-      .connect(target)
-      .approve(await getAddress(spender), await getAddress(token), amount)
-    return
+```typescript
+import * as ethers from "ethers"
+import * as hardhat from "hardhat"
+
+import * as IUniswapV2ERC20 from "@uniswap/v2-core/build/IUniswapV2ERC20.json"
+import * as IUniswapV2Router from "@uniswap/v2-periphery/build/IUniswapV2Router02.json"
+import * as IUniswapV2Factory from "@uniswap/v2-periphery/build/IUniswapV2Factory.json"
+import * as IUniswapV2Pair from "@uniswap/v2-periphery/build/IUniswapV2Pair.json"
+import * as IWETH from "@uniswap/v2-periphery/build/IWETH.json"
+
+import * as IUniswapV3Router from "@uniswap/v3-periphery/artifacts/contracts/interfaces/ISwapRouter.sol/ISwapRouter.json"
+import * as IUniswapV3Factory from "@uniswap/v3-core/artifacts/contracts/interfaces/IUniswapV3Factory.sol/IUniswapV3Factory.json"
+import * as IUniswapV3Pool from "@uniswap/v3-core/artifacts/contracts/interfaces/IUniswapV3Pool.sol/IUniswapV3Pool.json"
+import * as IUniswapV3ERC20 from "@uniswap/v3-core/artifacts/contracts/interfaces/IERC20Minimal.sol/IERC20Minimal.json"
+
+/*********************************
+ *      External Functions       *
+ *********************************/
+
+// Transfer ETH to user from Hardhat accounts
+export async function getEthFromHardhatAccounts(
+  user: ethers.Signer,
+  amount: ethers.BigNumberish
+): Promise<void> {
+  const accounts = await hardhat.ethers.getSigners()
+  const userAddr = await user.getAddress()
+  for (let i = 0; i < 20; i++) {
+    const accountBalance = await accounts[i].getBalance()
+    if (accountBalance.gte(amount)) {
+      // Transfer ETH to user
+      await accounts[i].sendTransaction({
+        to: userAddr,
+        value: amount.toString(),
+      })
+      return
+    }
   }
-  const tokenContract = await ethers.getContractAt(
-    "contracts/interfaces/IERC20.sol:IERC20",
-    await getAddress(token)
+  throw new Error("Not enough eth to transfer")
+}
+
+// Approve token to spender
+export async function approveToken(
+  user: ethers.Signer,
+  spender: string,
+  token: string,
+  amount: ethers.BigNumberish
+): Promise<void> {
+  // Format addresses
+  const tokenAddr = ethers.utils.getAddress(token)
+  const spenderAddr = ethers.utils.getAddress(spender)
+
+  // Create contract instances with user signature
+  const tokenContract = new hardhat.ethers.Contract(
+    tokenAddr,
+    IUniswapV2ERC20.abi,
+    user
   )
-  await tokenContract.connect(target).approve(await getAddress(spender), amount)
+  // Approve token to spender
+  const response = await tokenContract.approve(spenderAddr, amount.toString())
+}
+
+// Swap ETH to WETH via WETH contract
+export async function swapWeth(
+  user: ethers.Signer,
+  weth: string,
+  amount: ethers.BigNumberish
+): Promise<void> {
+  // Get user info from signer
+  const provider = user.provider ? user.provider : hardhat.ethers.provider
+
+  // Only Mainnet or Arbitrum network can swap
+  await checkNetwork(provider)
+
+  // Format addresses
+  const wethAddr = ethers.utils.getAddress(weth)
+
+  // Create WETH contract instances with user signature
+  const erc20Contract = new ethers.Contract(wethAddr, IWETH.abi, user)
+  // Swap ETH to WETH
+  const tx = (
+    await erc20Contract.deposit({
+      value: amount.toString(),
+    })
+  ).wait()
+}
+
+// Swap Tokens via Uniswap V3 contract
+// Reference from https://youtu.be/vXu5GeLP6A8
+// Add module before using: yarn add --dev @uniswap/v3-core @uniswap/v3-periphery
+export async function swapTokenV3(
+  user: ethers.Signer,
+  inputToken: string,
+  outputToken: string,
+  amount: ethers.BigNumberish
+) {
+  // Get user info from signer
+  const provider = user.provider ? user.provider : hardhat.ethers.provider
+  const userAddr = await user.getAddress()
+
+  // Only Mainnet or Arbitrum network can swap
+  await checkNetwork(provider)
+
+  // Max settlement time in seconds
+  const maxDelay = 60 * 2
+
+  // Format token addresses
+  const inputTokenAddr = ethers.utils.getAddress(inputToken)
+  const outputTokenAddr = ethers.utils.getAddress(outputToken)
+
+  // Create contract instances with user signature
+  const inputTokenContract = new hardhat.ethers.Contract(
+    inputTokenAddr,
+    IUniswapV3ERC20.abi,
+    user
+  )
+  const uniswapRouterAddr = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+  const uniswapRouterContract = new hardhat.ethers.Contract(
+    uniswapRouterAddr,
+    IUniswapV3Router.abi,
+    user
+  )
+
+  // Create contract instances with provider only
+  const uniswapFactoryAddr = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+  const factoryContract = new hardhat.ethers.Contract(
+    uniswapFactoryAddr,
+    IUniswapV3Factory.abi,
+    provider
+  )
+  const poolContract = new hardhat.ethers.Contract(
+    // Try to find low fee swap pool
+    await tryFindV3Pool(factoryContract, inputToken, outputToken),
+    IUniswapV3Pool.abi,
+    provider
+  )
+
+  // Get pool slot state
+  const poolFee = await poolContract.fee()
+
+  // Format token amount
+  const inputAmount = ethers.BigNumber.from(amount)
+
+  // Set swap deadline
+  const currentTimestamp = (await provider.getBlock("latest")).timestamp
+  const deadline = currentTimestamp + maxDelay
+
+  // Check sufficient balance
+  const balance = await inputTokenContract.balanceOf(userAddr)
+  if (balance.lt(inputAmount)) {
+    throw new Error("insufficient balance")
+  }
+
+  // Check sufficient allowance
+  const allowance = await inputTokenContract.allowance(
+    userAddr,
+    uniswapRouterContract.address
+  )
+  if (allowance.lt(inputAmount)) {
+    await (
+      await inputTokenContract.approve(
+        uniswapRouterContract.address,
+        inputAmount
+      )
+    ).wait()
+  }
+
+  // Swap tokens
+  const swapParams = {
+    tokenIn: inputTokenAddr,
+    tokenOut: outputTokenAddr,
+    fee: poolFee,
+    recipient: userAddr,
+    deadline: deadline,
+    amountIn: inputAmount,
+    amountOutMinimum: 0,
+    sqrtPriceLimitX96: 0,
+  }
+  const wsapTx = await uniswapRouterContract
+    .connect(user)
+    .exactInputSingle(swapParams)
+}
+
+// Swap Tokens via Uniswap V2 contract
+// Reference from https://github.com/thegostep/uniswap-v2-helper
+// Add module before using: yarn add --dev @uniswap/v2-core @uniswap/v2-periphery
+export async function swapTokenV2(
+  user: ethers.Signer,
+  inputToken: string,
+  outputToken: string,
+  amount: ethers.BigNumberish
+) {
+  // Get user info from signer
+  const provider = user.provider ? user.provider : hardhat.ethers.provider
+  const userAddr = await user.getAddress()
+
+  // Only Mainnet or Arbitrum network can swap
+  await checkNetwork(provider)
+
+  // Max settlement time in seconds
+  const maxDelay = 60 * 2
+  // True if amount is input token, false if amount is output token
+  const isSellOrder = true
+  // Frontrunning tolerance
+  const maxSlippage = 100
+
+  // Format token addresses
+  const inputTokenAddr = ethers.utils.getAddress(inputToken)
+  const outputTokenAddr = ethers.utils.getAddress(outputToken)
+
+  // Create contract instances with user signature
+  const inputTokenContract = new hardhat.ethers.Contract(
+    inputTokenAddr,
+    IUniswapV2ERC20.abi,
+    user
+  )
+  const outputTokenContract = new hardhat.ethers.Contract(
+    outputTokenAddr,
+    IUniswapV2ERC20.abi,
+    user
+  )
+  const uniswapRouterAddr = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+  const uniswapRouterContract = new hardhat.ethers.Contract(
+    uniswapRouterAddr,
+    IUniswapV2Router.abi,
+    user
+  )
+  console.log("outputTokenContract:", outputTokenContract.address)
+  console.log("factoryAddr:", await uniswapRouterContract.factory())
+
+  // Create contract instances with provider only
+  const factoryContract = new hardhat.ethers.Contract(
+    await uniswapRouterContract.factory(),
+    IUniswapV2Factory.abi,
+    provider
+  )
+
+  const pairContract = new hardhat.ethers.Contract(
+    await factoryContract.getPair(
+      inputTokenContract.address,
+      outputTokenContract.address
+    ),
+    IUniswapV2Pair.abi,
+    provider
+  )
+
+  // Format token amount
+  const inputAmount = ethers.BigNumber.from(amount) // = ethers.utils.parseUnits(amount, await inputTokenContract.decimals())
+  const outputAmount = ethers.BigNumber.from(amount) // = ethers.utils.parseUnits(amount, await outputTokenContract.decimals())
+
+  // Set swap path
+  const path = [inputTokenAddr, outputTokenAddr]
+
+  // Set swap deadline
+  const currentTimestamp = (await provider.getBlock("latest")).timestamp
+  const deadline = currentTimestamp + maxDelay
+
+  // Get expected token amount
+  const expectedAmount = isSellOrder
+    ? (await uniswapRouterContract.getAmountsOut(inputAmount, path))[1]
+    : (await uniswapRouterContract.getAmountsIn(outputAmount, path))[0]
+
+  // Set safety amount
+  const safetyAmount = isSellOrder
+    ? expectedAmount.mul(
+        ethers.BigNumber.from(1).sub(
+          ethers.BigNumber.from(maxSlippage).div(10000)
+        )
+      )
+    : expectedAmount.mul(
+        ethers.BigNumber.from(1).add(
+          ethers.BigNumber.from(maxSlippage).div(10000)
+        )
+      )
+
+  const amountIn = isSellOrder ? inputAmount : safetyAmount
+  const amountOut = isSellOrder ? safetyAmount : outputAmount
+
+  // Check sufficient balance
+  const balance = await inputTokenContract.balanceOf(userAddr)
+  if (balance.lt(amountIn)) {
+    throw new Error("insufficient balance")
+  }
+
+  // Check sufficient allowance
+  const allowance = await inputTokenContract.allowance(
+    userAddr,
+    uniswapRouterContract.address
+  )
+
+  if (allowance.lt(amountIn)) {
+    await (
+      await inputTokenContract.approve(uniswapRouterContract.address, amountIn)
+    ).wait()
+  }
+
+  // Swap tokens
+  const swapTx = await (isSellOrder
+    ? await uniswapRouterContract.swapExactTokensForTokens(
+        amountIn,
+        amountOut,
+        path,
+        userAddr,
+        deadline
+      )
+    : await uniswapRouterContract.swapTokensForExactTokens(
+        amountOut,
+        amountIn,
+        path,
+        userAddr,
+        deadline
+      )
+  ).wait()
 }
 
 /*********************************
  *      Internal Functions       *
  *********************************/
 
-// probeBalanceStorageSlot() is a function that is used to determine which storage slot in an Ethereum contract is being used to store the balance of an Ethereum account.
-// It does this by iterating through a range of potential storage slots, and for each slot, it checks if the storage at that slot is related to the balance of an account.
-// It does this by setting the storage value to a new value, then checking if the balance of the account has changed accordingly.
-// If the balance has changed, it indicates that the storage slot being tested is the one used to store the balance, and the function returns the storage slot number.
-// If no storage slot is found that is related to the balance of an account, the function throws an error.
-async function probeBalanceStorageSlot(token: Addressable): Promise<number> {
-  const account = ethers.constants.AddressZero
-  const tokenAddress = await getAddress(token)
-  const tokenContract = await ethers.getContractAt(
-    "contracts/interfaces/IERC20.sol:IERC20",
-    tokenAddress
-  )
-  for (let i = 0; i <= 100; i++) {
-    const index = getStorageMapIndex(account, i)
-    // Ensure this storage stores number
-    const v = await getStorageAt(tokenAddress, index)
-    let b: BigNumber
-    try {
-      b = BigNumber.from(v)
-    } catch (e) {
-      continue
+async function checkNetwork(
+  provider: ethers.ethers.providers.Provider
+): Promise<void> {
+  const chainId = (await provider.getNetwork()).chainId
+  if (chainId !== 1 && chainId !== 42161) {
+    throw new Error("Not Mainnet or Arbitrum network")
+  }
+}
+
+async function tryFindV3Pool(
+  factoryContract: ethers.ethers.Contract,
+  token0: string,
+  token1: string
+): Promise<string> {
+  // Format token addresses
+  const token0Addr = ethers.utils.getAddress(token0)
+  const token1Addr = ethers.utils.getAddress(token1)
+
+  // Try to find pool
+  for (let i = 0; i <= 30; i++) {
+    const poolAddress = await factoryContract.getPool(
+      token0Addr,
+      token1Addr,
+      ethers.BigNumber.from(1000).mul(i) // Try to get 0.1% * i pool
+    )
+    if (poolAddress !== "0x0000000000000000000000000000000000000000") {
+      console.log(
+        "Tips: Find",
+        (i * 0.1).toFixed(1).toString(),
+        "% fee pool:",
+        poolAddress
+      )
+      return poolAddress
     }
-    // Probe to check if this storage is related to balance
-    const p = b.add(1)
-    await setStorageAt(tokenAddress, index, p)
-    const pb = await tokenContract.balanceOf(account)
-    await setStorageAt(tokenAddress, index, b)
-    if (pb.eq(p)) {
-      return i
-    }
   }
-  throw new Error(`Cannot find balance storage slot for token ${tokenAddress}`)
-}
-
-function getStorageMapIndex(key: string, slot: number): string {
-  return ethers.utils.solidityKeccak256(["uint256", "uint256"], [key, slot])
-}
-
-function getStorageAt(address: string, index: string) {
-  return ethers.provider.send("eth_getStorageAt", [address, index])
-}
-
-// setStorageAt() is a helper function that is used to set the value of a specific storage slot in an Ethereum contract.
-// It takes as input the address of the Ethereum contract, the index of the storage slot to set, and the new value to set the storage slot to.
-// It then sends an Ethereum JSON-RPC request to set the value of the storage slot.
-// This function is typically used in conjunction with other functions that need to modify the storage of an Ethereum contract.
-async function setStorageAt(
-  address: string,
-  index: string,
-  value: BytesConvertible
-) {
-  await ethers.provider.send("hardhat_setStorageAt", [
-    address,
-    // index here must be a QUANTITY value, which is a hex string without leading zeros
-    // (0xabc instead of 0x0abc)
-    ethers.utils.hexValue(index),
-    toBytes32(BigNumber.from(value)),
-  ])
-}
-
-// Internal function: getAddress()
-interface GetAddressFunc {
-  getAddress(): Promise<string>
-}
-interface GetAddressProp {
-  address: string
-}
-type Addressable = GetAddressFunc | GetAddressProp | string
-function getAddress(target: Addressable): Promise<string> {
-  if (typeof target === "string") {
-    return Promise.resolve(target)
-  }
-  if ("address" in target) {
-    return Promise.resolve(target.address)
-  }
-  return target.getAddress()
-}
-
-// Internal function: toBytes32()
-type BytesConvertible = number | ethersHelpers.BytesLike | ethersHelpers.Hexable
-function toBytes32(value: BytesConvertible): string {
-  return ethersHelpers.hexlify(
-    ethersHelpers.zeroPad(ethersHelpers.arrayify(value), 32)
-  )
+  throw new Error("Can not find pool")
 }
 ```
 
-## （5）建立合約地址簿 addresses.ts
+## （6）建立合約地址簿 addresses.ts
 
-```java
+```bash
 % mkdir -p scripts/utils
 % touch scripts/utils/addresses.ts && code scripts/utils/addresses.ts
 ```
 
 ![](images/icons/grey_arrow_down.png)合約地址簿範例
 
-```java
+```typescript
 export const mainnetAddr = {
   // Token
   DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
   USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+
+  // Token decimals
+  DAIDecimals: "18",
+  USDCDecimals: "6",
+  USDTDecimals: "6",
+  WETHDecimals: "18",
 
   // Tokenlon
   AllowanceTarget: "0x8A42d311D282Bfcaa5133b2DE0a8bCDBECea3073",
@@ -414,6 +636,12 @@ export const arbitrumAddr = {
   USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
   WETH: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
 
+  // Token decimals
+  DAIDecimals: "18",
+  USDCDecimals: "6",
+  USDTDecimals: "6",
+  WETHDecimals: "18",
+
   // Tokenlon
   AllowanceTarget: "0x413eCcE5d56204962090eEF1deaD4c0a247e289B",
   AMMWrapper: "",
@@ -435,11 +663,11 @@ export const arbitrumAddr = {
 }
 ```
 
-## （6）下載、建立及編譯相關合約
+## （7）下載、建立及編譯相關合約
 
-### 6.1、下載相關 Interface 合約
+### 7.1、下載相關 Interface 合約
 
-```java
+```bash
 % mkdir -p contracts/interfaces
 ```
 
@@ -476,7 +704,7 @@ curl -o contracts/interfaces/IUniswapV3SwapCallback.sol -LJO https://raw.githubu
 % code contracts/interfaces/ILimitOrder.sol
 ```
 
-```java
+```typescript
 （…前略）
     /// @notice Set new coordinator
     /// @notice Only operator can call
@@ -488,9 +716,9 @@ curl -o contracts/interfaces/IUniswapV3SwapCallback.sol -LJO https://raw.githubu
 }
 ```
 
-### 6.2、下載相關 utils 合約
+### 7.2、下載相關 utils 合約
 
-```java
+```bash
 % mkdir -p contracts/utils
 ```
 
@@ -506,7 +734,7 @@ curl -o contracts/utils/SignatureValidator.sol -LJO https://raw.githubuserconten
 curl -o contracts/utils/LibBytes.sol -LJO https://raw.githubusercontent.com/consenlabs/tokenlon-contracts/master/contracts/utils/LibBytes.sol
 ```
 
-### 6.3、建立 IUserProxy.sol 合約
+### 7.3、建立 IUserProxy.sol 合約
 
 ```bash
 ### 建立 IUserProxy.sol 檔
@@ -515,7 +743,7 @@ curl -o contracts/utils/LibBytes.sol -LJO https://raw.githubusercontent.com/cons
 
 ![](images/icons/grey_arrow_down.png)建立 IUserProxy.sol 合約範例
 
-```java
+```typescript
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.7.6;
 
@@ -528,9 +756,9 @@ interface IUserProxy {
 }
 ```
 
-### 6.4、編譯所有合約
+### 7.4、編譯所有合約
 
-```java
+```bash
 ### 因 Hardhat 範例合約與 Tokenlon SDK 編譯版本不同，故需刪除此範例合約
 % mv contracts/Lock.sol contracts/Lock.sol.bak
 
@@ -565,11 +793,11 @@ FORK_BLOCK_NUMBER="14995000"
 
 ![](images/icons/grey_arrow_down.png)AMMWrapper via Tokenlon SDK 程式碼範例
 
-```java
+```typescript
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { mainnetAddr } from "./utils/addresses"
-import * as cheatcodes from "./utils/cheatcodes"
+import * as tokenUtils from "./utils/tokenUtils"
 import {
   AMMOrder,
   SignatureType,
@@ -578,6 +806,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", mainnetAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", mainnetAddr.DAIDecimals)
 
 async function main() {
   // Print network information
@@ -609,7 +840,7 @@ async function main() {
   if (network.name === "hardhat") {
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Set default order
     const defaultOrder: AMMOrder = {
@@ -618,8 +849,8 @@ async function main() {
       // Could override following fields at need in each case
       takerAssetAddr: mainnetAddr.WETH,
       makerAssetAddr: mainnetAddr.DAI,
-      takerAssetAmount: 100,
-      makerAssetAmount: 100 * 1000,
+      takerAssetAmount: wethUnit.mul(1),
+      makerAssetAmount: daiUnit.mul(1000),
       userAddr: user.address,
       receiverAddr: user.address,
       salt: signingHelper.generateRandomSalt(),
@@ -645,8 +876,11 @@ async function main() {
       order.makerAssetAmount.toString()
     )
 
-    // Approve transfer of takerAssetAddr permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    // Swap 1 ETH to WETH via WETH contract
+    await tokenUtils.swapWeth(user, mainnetAddr.WETH, wethUnit.mul(1))
+
+    // Approve the transfer of takerAssetAddr permission to AllowanceTarget contract.
+    await tokenUtils.approveToken(
       user,
       mainnetAddr.AllowanceTarget,
       order.takerAssetAddr,
@@ -706,7 +940,7 @@ main().catch((error) => {
 
 - 執行 scripts/ammwrapper_eoa_via_sdk.ts 範例
 
-```java
+```bash
 % npx hardhat run scripts/ammwrapper_eoa_via_sdk.ts
 ```
 
@@ -714,20 +948,20 @@ main().catch((error) => {
 
 - 執行結果
 
-```java
+```bash
 Chain id: 1
 Network name: hardhat
 Block number: 14995000
 Block timestamp: 1655704684
 Set the makerAddr to UniswapV2Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
-Get makerAssetAmount from UniswapV2Router: 107557
+Get makerAssetAmount from UniswapV2Router: 1075390205917469195418
 Balance before transaction:
-        User's WETH: 100
+        User's WETH: 1000000000000000000
         User's DAI: 0
 Complete the transaction of the AMMWrapper contract
 Balance after transaction:
         User's WETH: 0
-        User's DAI: 107557
+        User's DAI: 1075390205917469195418
 ```
 
 - 執行說明
@@ -746,11 +980,11 @@ Balance after transaction:
 
 ![](images/icons/grey_arrow_down.png)AMMWrapperWithPath via Tokenlon SDK 程式碼範例
 
-```java
+```typescript
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { mainnetAddr } from "./utils/addresses"
-import * as cheatcodes from "./utils/cheatcodes"
+import * as tokenUtils from "./utils/tokenUtils"
 import {
   AMMOrder,
   SignatureType,
@@ -759,6 +993,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", mainnetAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", mainnetAddr.DAIDecimals)
 
 async function main() {
   // Print network information
@@ -790,7 +1027,7 @@ async function main() {
   if (network.name === "hardhat") {
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Set default order
     const defaultOrder: AMMOrder = {
@@ -799,8 +1036,8 @@ async function main() {
       // Could override following fields at need in each case
       takerAssetAddr: mainnetAddr.WETH,
       makerAssetAddr: mainnetAddr.DAI,
-      takerAssetAmount: 100,
-      makerAssetAmount: 100 * 1000,
+      takerAssetAmount: wethUnit.mul(1),
+      makerAssetAmount: daiUnit.mul(1000),
       userAddr: user.address,
       receiverAddr: user.address,
       salt: signingHelper.generateRandomSalt(),
@@ -826,8 +1063,11 @@ async function main() {
       order.makerAssetAmount.toString()
     )
 
-    // Approve transfer of takerAssetAddr permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    // Swap 1 ETH to WETH via WETH contract
+    await tokenUtils.swapWeth(user, mainnetAddr.WETH, wethUnit.mul(1))
+
+    // Approve the transfer of takerAssetAddr permission to AllowanceTarget contract.
+    await tokenUtils.approveToken(
       user,
       mainnetAddr.AllowanceTarget,
       order.takerAssetAddr,
@@ -840,9 +1080,6 @@ async function main() {
       signer: user,
       verifyingContract: mainnetAddr.AMMWrapperWithPath,
     })
-    console.log(
-      "Complete the creation of the EOS signature of the AMMWrapper contract"
-    )
 
     // Create payload for AMMWrapperWithPath contract via Tokenlon SDK library.
     const payload = encodingHelper.encodeAMMTradeWithPath({
@@ -906,15 +1143,14 @@ Network name: hardhat
 Block number: 14995000
 Block timestamp: 1655704684
 Set the makerAddr to UniswapV2Router: 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
-Get makerAssetAmount from UniswapV2Router: 107557
-Complete the creation of the EOS signature of the AMMWrapper contract
+Get makerAssetAmount from UniswapV2Router: 1075390205917469195418
 Balance before transaction:
-        User's WETH: 100
+        User's WETH: 1000000000000000000
         User's DAI: 0
 Complete the transaction of the AMMWrapperWithPath contract
 Balance after transaction:
         User's WETH: 0
-        User's DAI: 107557
+        User's DAI: 1075390205917469195418
 ```
 
 - 執行說明
@@ -933,11 +1169,11 @@ Balance after transaction:
 
 ![](images/icons/grey_arrow_down.png)RFQ via Tokenlon SDK 程式碼範例
 
-```java
+```typescript
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { mainnetAddr } from "./utils/addresses"
-import * as cheatcodes from "./utils/cheatcodes"
+import * as tokenUtils from "./utils/tokenUtils"
 import {
   RFQOrder,
   RFQFill,
@@ -947,6 +1183,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", mainnetAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", mainnetAddr.DAIDecimals)
 
 async function main() {
   // Hardhat network information
@@ -974,11 +1213,11 @@ async function main() {
   if (network.name === "hardhat") {
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Transfer 100 ETH to maker wallet
     const maker = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(maker, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(maker, ethUnit.mul(100))
 
     // Set default order
     const defaultOrder: RFQOrder = {
@@ -987,8 +1226,8 @@ async function main() {
       makerAddr: maker.address,
       takerAssetAddr: mainnetAddr.WETH,
       makerAssetAddr: mainnetAddr.DAI,
-      takerAssetAmount: 1,
-      makerAssetAmount: 1000,
+      takerAssetAmount: wethUnit.mul(1),
+      makerAssetAmount: daiUnit.mul(1000),
       salt: signingHelper.generateRandomSalt(),
       deadline: EXPIRY,
       feeFactor: 0,
@@ -999,8 +1238,19 @@ async function main() {
       ...defaultOrder,
     }
 
+    // Swap ETH to WETH via WETH contract
+    await tokenUtils.swapWeth(maker, mainnetAddr.WETH, wethUnit.mul(1))
+
+    // Swap 1 WETH to DAI via Uniswap contract
+    await tokenUtils.swapTokenV3(
+      maker,
+      mainnetAddr.WETH,
+      mainnetAddr.DAI,
+      wethUnit.mul(1)
+    )
+
     // Approve transfer of makerAssetAddr permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    await tokenUtils.approveToken(
       maker,
       mainnetAddr.AllowanceTarget,
       order.makerAssetAddr,
@@ -1089,7 +1339,7 @@ main().catch((error) => {
 
 - 執行 scripts/rfq_eoa_via_sdk.ts 範例
 
-```java
+```bash
 % npx hardhat run scripts/rfq_eoa_via_sdk.ts
 ```
 
@@ -1097,22 +1347,23 @@ main().catch((error) => {
 
 - 執行結果
 
-```java
+```bash
 Chain id: 1
 Network name: hardhat
 Block number: 14995000
 Block timestamp: 1655704684
+Tips: Find 0.3 % fee pool: 0xC2e9F25Be6257c210d7Adf0D4Cd6E3E881ba25f8
 Balance before transaction:
         User's ETH: 100000000000000000000
         User's DAI: 0
         Maker's WETH: 0
-        Maker's DAI: 1000
+        Maker's DAI: 1076723285035289096160
 Complete the transaction of the RFQ contract
 Balance after transaction:
-        User's ETH: 99994911572329029783
-        User's DAI: 1000
-        Maker's WETH: 1
-        Maker's DAI: 0
+        User's ETH: 98997168714640892082
+        User's DAI: 1000000000000000000000
+        Maker's WETH: 1000000000000000000
+        Maker's DAI: 76723285035289096160
 ```
 
 - 執行說明
@@ -1149,10 +1400,11 @@ FORK_BLOCK_NUMBER="18000000"
 
 ![](images/icons/grey_arrow_down.png)LimitOrder via Tokenlon SDK 程式碼範例
 
-```java
+```typescript
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { arbitrumAddr } from "./utils/addresses"
+import * as tokenUtils from "./utils/tokenUtils"
 import * as cheatcodes from "./utils/cheatcodes"
 import {
   LimitOrder,
@@ -1164,6 +1416,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", arbitrumAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", arbitrumAddr.DAIDecimals)
 
 async function main() {
   // Hardhat network information
@@ -1198,15 +1453,15 @@ async function main() {
 
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Transfer 100 ETH to maker wallet
     const maker = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(maker, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(maker, ethUnit.mul(100))
 
     // Transfer 100 ETH to operator of LimitOrder contract
     const operator = await ethers.getSigner(await LimitOrderContract.operator())
-    cheatcodes.dealETH(operator, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(operator, ethUnit.mul(100))
     console.log("Get the operator of LimitOrder contract:", operator.address)
 
     // Replace coordinator on chain
@@ -1225,8 +1480,8 @@ async function main() {
       // Could override following fields at need in each case
       makerToken: arbitrumAddr.WETH,
       takerToken: arbitrumAddr.DAI,
-      makerTokenAmount: 100,
-      takerTokenAmount: 100 * 1000,
+      makerTokenAmount: wethUnit.mul(1),
+      takerTokenAmount: daiUnit.mul(1000),
       maker: maker.address,
       taker: ethers.constants.AddressZero, // can be filled by anyone
       salt: signingHelper.generateRandomSalt(),
@@ -1238,16 +1493,28 @@ async function main() {
       ...defaultOrder,
     }
 
-    // Approve transfer of makerToken permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    // Swap 1 ETH of maker and user to WETH via WETH contract
+    await tokenUtils.swapWeth(maker, arbitrumAddr.WETH, wethUnit.mul(1))
+    await tokenUtils.swapWeth(user, arbitrumAddr.WETH, wethUnit.mul(1))
+
+    // Approve the transfer of makerToken permission to AllowanceTarget contract.
+    await tokenUtils.approveToken(
       maker,
       arbitrumAddr.AllowanceTarget,
       defaultOrder.makerToken,
       defaultOrder.makerTokenAmount
     )
 
+    // Swap 1 WETH of user to DAI via Uniswap contract
+    await tokenUtils.swapTokenV3(
+      user,
+      arbitrumAddr.WETH,
+      arbitrumAddr.DAI,
+      wethUnit.mul(1)
+    )
+
     // Approve transfer of takerToken permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    await tokenUtils.approveToken(
       user,
       arbitrumAddr.AllowanceTarget,
       defaultOrder.takerToken,
@@ -1310,20 +1577,20 @@ async function main() {
     // Print user balance before transaction
     console.log("Balance before transaction:")
     console.log(
-      "\tUser's WETH:",
-      (await WETHContract.balanceOf(user.address)).toString()
-    )
-    console.log(
-      "\tUser's DAI:",
-      (await DAIContract.balanceOf(user.address)).toString()
-    )
-    console.log(
       "\tMaker's WETH:",
       (await WETHContract.balanceOf(maker.address)).toString()
     )
     console.log(
       "\tMaker's DAI:",
       (await DAIContract.balanceOf(maker.address)).toString()
+    )
+    console.log(
+      "\tUser's WETH:",
+      (await WETHContract.balanceOf(user.address)).toString()
+    )
+    console.log(
+      "\tUser's DAI:",
+      (await DAIContract.balanceOf(user.address)).toString()
     )
 
     // Send payload from Tokenlon proxy to LimitOrder contract via Tokenlon SDK library.
@@ -1334,20 +1601,20 @@ async function main() {
     // Print user balance after transaction
     console.log("Balance after transaction:")
     console.log(
-      "\tUser's WETH:",
-      (await WETHContract.balanceOf(user.address)).toString()
-    )
-    console.log(
-      "\tUser's DAI:",
-      (await DAIContract.balanceOf(user.address)).toString()
-    )
-    console.log(
       "\tMaker's WETH:",
       (await WETHContract.balanceOf(maker.address)).toString()
     )
     console.log(
       "\tMaker's DAI:",
       (await DAIContract.balanceOf(maker.address)).toString()
+    )
+    console.log(
+      "\tUser's WETH:",
+      (await WETHContract.balanceOf(user.address)).toString()
+    )
+    console.log(
+      "\tUser's DAI:",
+      (await DAIContract.balanceOf(user.address)).toString()
     )
   }
 }
@@ -1376,18 +1643,19 @@ Network name: hardhat
 Block number: 18000000
 Block timestamp: 1658219614
 Get the operator of LimitOrder contract: 0x4aBEAEA1E76a81203521405aff8d8D128307fFaF
-Complete replace new coordinator on chain: 0xA7369e52B9Ed9Eed2e1e2a5b070F06d80C25b4cc
+Complete replace new coordinator on chain: 0xC8aB76EFF66b523552D28bEA118F83FCA927E5Cc
+Tips: Find 0.3 % fee pool: 0xA961F0473dA4864C5eD28e00FcC53a3AAb056c1b
 Balance before transaction:
-        User's WETH: 0
-        User's DAI: 100000
-        Maker's WETH: 100
+        Maker's WETH: 1000000000000000000
         Maker's DAI: 0
+        User's WETH: 0
+        User's DAI: 1513650316365103742286
 Complete the transaction of the LimitOrder contract
 Balance after transaction:
-        User's WETH: 100
-        User's DAI: 0
         Maker's WETH: 0
-        Maker's DAI: 100000
+        Maker's DAI: 1000000000000000000000
+        User's WETH: 1000000000000000000
+        User's DAI: 513650316365103742286
 ```
 
 - 執行說明

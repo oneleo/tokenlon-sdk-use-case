@@ -1,6 +1,7 @@
 import { Wallet } from "ethers"
 import { ethers, network } from "hardhat"
 import { arbitrumAddr } from "./utils/addresses"
+import * as tokenUtils from "./utils/tokenUtils"
 import * as cheatcodes from "./utils/cheatcodes"
 import {
   LimitOrder,
@@ -12,6 +13,9 @@ import {
 } from "@tokenlon/contracts-lib/v5"
 
 const EXPIRY = Math.floor(Date.now() / 1000) + 86400
+const ethUnit = ethers.utils.parseEther("1")
+const wethUnit = ethers.utils.parseUnits("1.0", arbitrumAddr.WETHDecimals)
+const daiUnit = ethers.utils.parseUnits("1.0", arbitrumAddr.DAIDecimals)
 
 async function main() {
   // Hardhat network information
@@ -46,15 +50,15 @@ async function main() {
 
     // Transfer 100 ETH to user
     const user: Wallet = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(user, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(user, ethUnit.mul(100))
 
     // Transfer 100 ETH to maker wallet
     const maker = Wallet.createRandom().connect(ethers.provider)
-    cheatcodes.dealETH(maker, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(maker, ethUnit.mul(100))
 
     // Transfer 100 ETH to operator of LimitOrder contract
     const operator = await ethers.getSigner(await LimitOrderContract.operator())
-    cheatcodes.dealETH(operator, ethers.utils.parseEther("100"))
+    await tokenUtils.getEthFromHardhatAccounts(operator, ethUnit.mul(100))
     console.log("Get the operator of LimitOrder contract:", operator.address)
 
     // Replace coordinator on chain
@@ -73,8 +77,8 @@ async function main() {
       // Could override following fields at need in each case
       makerToken: arbitrumAddr.WETH,
       takerToken: arbitrumAddr.DAI,
-      makerTokenAmount: 100,
-      takerTokenAmount: 100 * 1000,
+      makerTokenAmount: wethUnit.mul(1),
+      takerTokenAmount: daiUnit.mul(1000),
       maker: maker.address,
       taker: ethers.constants.AddressZero, // can be filled by anyone
       salt: signingHelper.generateRandomSalt(),
@@ -86,16 +90,28 @@ async function main() {
       ...defaultOrder,
     }
 
-    // Approve transfer of makerToken permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    // Swap 1 ETH of maker and user to WETH via WETH contract
+    await tokenUtils.swapWeth(maker, arbitrumAddr.WETH, wethUnit.mul(1))
+    await tokenUtils.swapWeth(user, arbitrumAddr.WETH, wethUnit.mul(1))
+
+    // Approve the transfer of makerToken permission to AllowanceTarget contract.
+    await tokenUtils.approveToken(
       maker,
       arbitrumAddr.AllowanceTarget,
       defaultOrder.makerToken,
       defaultOrder.makerTokenAmount
     )
 
+    // Swap 1 WETH of user to DAI via Uniswap contract
+    await tokenUtils.swapTokenV3(
+      user,
+      arbitrumAddr.WETH,
+      arbitrumAddr.DAI,
+      wethUnit.mul(1)
+    )
+
     // Approve transfer of takerToken permission to AllowanceTarget contract.
-    await cheatcodes.dealTokenAndApprove(
+    await tokenUtils.approveToken(
       user,
       arbitrumAddr.AllowanceTarget,
       defaultOrder.takerToken,
@@ -158,20 +174,20 @@ async function main() {
     // Print user balance before transaction
     console.log("Balance before transaction:")
     console.log(
-      "\tUser's WETH:",
-      (await WETHContract.balanceOf(user.address)).toString()
-    )
-    console.log(
-      "\tUser's DAI:",
-      (await DAIContract.balanceOf(user.address)).toString()
-    )
-    console.log(
       "\tMaker's WETH:",
       (await WETHContract.balanceOf(maker.address)).toString()
     )
     console.log(
       "\tMaker's DAI:",
       (await DAIContract.balanceOf(maker.address)).toString()
+    )
+    console.log(
+      "\tUser's WETH:",
+      (await WETHContract.balanceOf(user.address)).toString()
+    )
+    console.log(
+      "\tUser's DAI:",
+      (await DAIContract.balanceOf(user.address)).toString()
     )
 
     // Send payload from Tokenlon proxy to LimitOrder contract via Tokenlon SDK library.
@@ -182,20 +198,20 @@ async function main() {
     // Print user balance after transaction
     console.log("Balance after transaction:")
     console.log(
-      "\tUser's WETH:",
-      (await WETHContract.balanceOf(user.address)).toString()
-    )
-    console.log(
-      "\tUser's DAI:",
-      (await DAIContract.balanceOf(user.address)).toString()
-    )
-    console.log(
       "\tMaker's WETH:",
       (await WETHContract.balanceOf(maker.address)).toString()
     )
     console.log(
       "\tMaker's DAI:",
       (await DAIContract.balanceOf(maker.address)).toString()
+    )
+    console.log(
+      "\tUser's WETH:",
+      (await WETHContract.balanceOf(user.address)).toString()
+    )
+    console.log(
+      "\tUser's DAI:",
+      (await DAIContract.balanceOf(user.address)).toString()
     )
   }
 }
